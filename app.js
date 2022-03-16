@@ -4,9 +4,11 @@ const ejs = require("ejs");
 const express = require("express");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
+const findOrCreate = require ("mongoose-findorcreate");
 const session = require("express-session");
 const passport = require ("passport");
 const passportLocalMongoose = require ("passport-local-mongoose");
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
 
 //const encrypt = require("mongoose-encryption");
 //const md5 = require("md5"); //  encryption
@@ -38,23 +40,60 @@ mongoose.connect("mongodb://localhost:27017/userDB");
 //----DB-----
 const userSchema = new mongoose.Schema({
   email: String,
-  password: String
+  password: String,
+  googleId: String
 });
 
-// user Schema
+// user Schema add pluins
 userSchema.plugin(passportLocalMongoose); // encryption
+userSchema.plugin(findOrCreate);
 
 const User = new mongoose.model("User", userSchema);
 
 passport.use(User.createStrategy());
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
+
+passport.serializeUser(function(user, done){
+  done(null, user.id);
+});
+
+passport.deserializeUser(function(id, done){
+  User.findById(id, function(err, user){
+    done(err, user);
+  });
+});
+
+//Google auth
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets",
+    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    console.log(profile);
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
+// TODO: facebook authentication
 
 //------Routes-----
 app.route("/")
   .get(function(req, res) {
     res.render("home");
   });
+  //-------------Google auth user---------------
+app.route("/auth/google") // we check is that user have google account and redirect
+.get(passport.authenticate("google",{scope:["profile"]})
+);
+//here to check for validation
+app.route("/auth/google/secrets")
+.get(passport.authenticate("google", {failureRedirect: "/login"}), function(req, res){
+  // successful authentication, redirect to page that i want
+  res.redirect("/secrets")
+})
+//--------------------------------
 
 app.route("/login")
   .get(function(req, res) {
@@ -101,7 +140,17 @@ app.route("/secrets")
   }else{
     res.redirect("/login");
   }
+});
+app.route("/submit")
+.get(function(req, res){
+  if (req.isAuthenticated()){
+    res.render("submit");
+  }else{
+    res.redirect("/login");
+  }
 })
+
+
 
 app.route("/logout")
 .get(function(req, res){
