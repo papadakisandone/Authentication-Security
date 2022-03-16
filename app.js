@@ -41,7 +41,8 @@ mongoose.connect("mongodb://localhost:27017/userDB");
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
-  googleId: String
+  googleId: String,
+  secret: String
 });
 
 // user Schema add pluins
@@ -70,7 +71,7 @@ passport.use(new GoogleStrategy({
     userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
   },
   function(accessToken, refreshToken, profile, cb) {
-    console.log(profile);
+    //console.log(profile);
     User.findOrCreate({ googleId: profile.id }, function (err, user) {
       return cb(err, user);
     });
@@ -135,11 +136,21 @@ app.route("/register")
   }); //post
 app.route("/secrets")
 .get(function(req, res){
-  if (req.isAuthenticated()){
-    res.render("secrets");
-  }else{
-    res.redirect("/login");
-  }
+  // if (req.isAuthenticated()){
+  //   res.render("secrets");
+  // }else{
+  //   res.redirect("/login");
+  // }
+  //find all secrets that they have value (ne-> not equal)
+  User.find({"secret": {$ne:null}}, function(err, foundUsers){
+    if(err){
+      console.log(err);
+    }else{
+      if (foundUsers){
+        res.render("secrets",{usersWithSecrets:foundUsers});
+      }
+    }
+  });
 });
 app.route("/submit")
 .get(function(req, res){
@@ -149,8 +160,22 @@ app.route("/submit")
     res.redirect("/login");
   }
 })
-
-
+.post(function(req, res){
+  const submitedSecret = req.body.secret;
+  //console.log(req.user);
+  User.findById(req.user.id, function(err, foundUser){
+    if (err){
+      console.log(err);
+    }else{
+      if (foundUser){
+        foundUser.secret = submitedSecret;
+        foundUser.save(function(){
+          res.redirect("/secrets");
+        });
+      }
+    }
+  }); // findById
+});// post
 
 app.route("/logout")
 .get(function(req, res){
